@@ -5,7 +5,7 @@ The original `.xlsm` file contains Excel macros. Keep that file as the backup. T
 ## Connect the form
 
 1. Open the Google Sheets copy of the workbook. Confirm that `Inventory Entry` has its column headings on row 4 and `FA-000003` on row 7.
-2. In the Sheet, choose **Extensions → Apps Script**. Add the contents of [`src/Code.gs`](../src/Code.gs) and an HTML file named `Index` containing [`src/Index.html`](../src/Index.html).
+2. In the Sheet, choose **Extensions → Apps Script**. Add `Code.gs`, `TagParser.gs`, and `Config.gs` from `src/`, plus an HTML file named `Index` containing [`src/Index.html`](../src/Index.html). Set the inventory spreadsheet ID and photo folder ID in `Config.gs`. The web app opens this sheet by ID.
 3. In the Apps Script editor, choose **Services (+) → Drive API** and use v3. The tag reader uses Google's document OCR to suggest model and serial numbers.
 4. Run `testSetup` once in the editor, then grant the requested Sheets, Drive, and Docs permissions. It should return the current row for `FA-000003`. Keep access restricted to the staff accounts that need intake.
 5. Choose **Deploy → New deployment → Web app**. Set it to execute as the owner and restrict who can access it to your staff. Copy the web app URL. On each iPhone, open the URL in Safari and use **Share → Add to Home Screen**.
@@ -14,7 +14,7 @@ Staff enter an FA ID, tap **Find ID**, and take an appliance photo and a close t
 
 ## Update an existing deployment
 
-1. Replace the contents of the Apps Script `Code` and `Index` files with the updated files in `src/` and save the project.
+1. Replace `Code`, `TagParser`, `Config`, and `Index` with the updated files in `src/`, preserving the environment's spreadsheet and photo folder IDs. Use `src/appsscript.json` for the manifest. Save the project. The repeatable deployment command in [PIPELINE.md](PIPELINE.md) generates this configuration automatically.
 2. Choose **Deploy → Manage deployments**, select the existing web app, and click the edit pencil.
 3. Choose **New version** and click **Deploy**. Updating the existing deployment keeps the same web app URL.
 4. Reload the app on the iPhone. Take a tag photo, confirm both numbers fill in, review them, then save to a test inventory row.

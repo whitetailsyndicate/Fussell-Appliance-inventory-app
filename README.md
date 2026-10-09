@@ -1,66 +1,56 @@
 # Fussell appliance intake
 
-An iPhone-friendly appliance inventory form powered by Google Apps Script,
-Google Sheets, and Google Drive. Staff look up a preassigned inventory ID,
-photograph the appliance and its identification tag, review OCR suggestions,
-and save intake details to the existing inventory row.
+An iPhone-friendly appliance intake form with automatic model/serial tag
+reading, photo capture, inventory ID lookup, and explicit replacement checks.
+
+Open the [iPhone test app](https://whitetailsyndicate.github.io/Fussell-Appliance-inventory-app/)
+in Safari. Start with ID FA-000003, take both photos, review the recognized
+numbers, and save a test entry. Export test inventory to Files on the phone.
+The Pages version stores test entries on the device and uses browser OCR.
+It does not write to the live Google inventory.
+
+The Google Apps Script version uses Google's OCR and writes to Google Sheets
+and Drive. It requires a configured Google account and separate deployment.
+
+## Testing and updates
+
+- [iPhone testing and package setup](docs/IPHONE-TESTING.md)
+- [Release pipeline and rollback](docs/PIPELINE.md)
+- [Apps Script setup](docs/SETUP.md)
+- [Development checks](CONTRIBUTING.md)
+
+```powershell
+npm ci --ignore-scripts
+npm run check
+npm test
+npm run build:pages
+npm run package
+```
+
+Node.js 22 or newer is required for the tooling. GitHub Actions runs checks,
+builds a ZIP, and publishes the phone test after verified pushes. Google test
+and production releases use separate configuration and encrypted deployment
+credentials, set up once using the included scripts.
 
 ## Repository layout
 
 ```text
-src/
-  Code.gs          Apps Script backend: lookup, OCR, validation, and saving
-  Index.html       Mobile form and browser-side photo processing
-docs/
-  SETUP.md         Google Apps Script deployment and staff setup
-tests/
-  tag-intake.test.cjs  OCR parsing, form autofill, and inventory save regressions
-CONTRIBUTING.md    Development workflow and manual verification
+src/                Apps Script backend, shared tag parser, form, config, manifest
+web/                Browser OCR and device-storage adapter for the Pages test
+scripts/            Checks, builds, packaging, Google setup, deployment, CI setup
+tests/              Regression tests and a generated, non-private tag fixture
+docs/               Phone testing, setup, and pipeline guides
+.github/workflows/  Check/package, Pages publishing, and optional Google release
 ```
 
-## Run and deploy
+## Google inventory contract
 
-Follow [the setup guide](docs/SETUP.md). Copy `src/Code.gs` into the spreadsheet's
-bound Apps Script project and `src/Index.html` into its HTML file named `Index`.
-Enable the Advanced Drive service (v3), authorize the project, and deploy it as
-a web app with access restricted to authorized staff.
+IDs match FA- followed by six digits and must exist in column A of Inventory
+Entry, whose headers are on row 4. Intake writes staff fields to C-J, sets B's
+date if empty, and adds photo URLs and intake time in S-U. It leaves K-R untouched.
+Photos are stored in the configured Drive folder.
 
-The application runs in Google's Apps Script environment. There is no local
-web server, package installation, build step, or automated deployment configured.
-Opening the HTML directly does not provide the `google.script.run` backend.
-The Google Sheet, Drive photos, and original Excel workbook are external to this
-repository.
-
-## How it works
-
-- `doGet()` serves the form. Browser calls use `google.script.run` to invoke
-  `getExisting()`, `readTag()`, and `submitIntake()`.
-- Inventory IDs must match `FA-` followed by six digits and already exist in
-  column A of the `Inventory Entry` sheet. The header row is row 4.
-- Choosing a tag photo automatically reads it and fills the model and serial
-  fields when recognized. Staff review the suggestions before saving. The
-  original OCR text is available under "Text read from tag photo."
-- Photos are encoded as JPEG and resized in the browser to a maximum dimension
-  of 1,800 pixels for appliance photos and 2,400 pixels for tag photos. Tag OCR
-  creates a temporary Google Doc and trashes it after reading the text.
-- Intake saves photos into the `Fussell Inventory Photos` Drive folder and
-  writes staff-entry fields to columns C-J. It sets column B's date only when
-  empty, and stores photo links and the intake time in columns S-U.
-  Columns K-R are not written by the intake code.
-- Replacing a row with an existing appliance type requires explicit confirmation.
-
-OCR results require staff review. The app requires an internet connection.
-For changes and verification, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Version control
-
-Use `main` as the baseline branch and a separate branch for each fix:
-
-```powershell
-git switch -c fix/short-description
-git status
-git diff
-```
-
-Review and commit changes before updating the deployed Apps Script project.
-This repository does not configure a remote or publish the application.
+Google deployments open their sheet by ID and display environment and build
+labels. Test configurations should reference an inventory copy and their own
+photo folder. Staff review OCR suggestions before saving. Internet access is
+required for the hosted application.

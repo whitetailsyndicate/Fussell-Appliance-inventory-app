@@ -1,0 +1,50 @@
+name: Deploy Apps Script
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Release target
+        type: choice
+        options: [test, production]
+        default: test
+      version:
+        description: Existing Apps Script version for rollback (leave empty for a new release)
+        type: string
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: apps-script-${{ inputs.environment || 'test' }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' || vars.TEST_AUTODEPLOY == 'true') &&
+      (inputs.environment != 'production' || github.ref == 'refs/heads/main')
+    environment: ${{ inputs.environment || 'test' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Deploy or restore an existing version
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          APPS_SCRIPT_CONFIG: ${{ secrets.APPS_SCRIPT_CONFIG }}
+          EXPECTED_ENVIRONMENT: ${{ inputs.environment || 'test' }}
+          INTAKE_VERSION: ${{ github.sha }}
+          ROLLBACK_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$ROLLBACK_VERSION" ]; then
+            npm run deploy -- --version "$ROLLBACK_VERSION"
+          else
+            npm run deploy
+          fi
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f .local/.clasprc.json

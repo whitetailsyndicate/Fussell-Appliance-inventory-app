@@ -1,0 +1,28 @@
+{
+  "name": "fussell-appliance-intake",
+  "version": "0.1.0",
+  "private": true,
+  "description": "iPhone appliance intake and Apps Script release tooling",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node scripts/check.mjs",
+    "build": "node scripts/build.mjs",
+    "build:pages": "node scripts/build-pages.mjs",
+    "package": "node scripts/package.mjs",
+    "setup:test": "node scripts/setup-test.mjs",
+    "setup:ci": "node scripts/setup-ci.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "clasp": "clasp"
+  },
+  "devDependencies": {
+    "@google/clasp": "3.4.1",
+    "@tesseract.js-data/eng": "1.0.0",
+    "fake-indexeddb": "6.2.5",
+    "fflate": "0.8.2",
+    "tesseract.js": "7.0.0",
+    "yaml": "2.9.1"
+  }
+}

@@ -4,7 +4,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-const backend = fs.readFileSync(path.join(__dirname, '../src/Code.gs'), 'utf8');
+const backend = fs.readFileSync(path.join(__dirname, '../src/TagParser.gs'), 'utf8') + '\n' +
+  fs.readFileSync(path.join(__dirname, '../src/Code.gs'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../src/Index.html'), 'utf8');
 const model = 'DV56H9100EG/A2';
 const serial = '0BH95AEG900840J';
@@ -14,6 +15,20 @@ function server(services = {}) {
   vm.runInContext(backend, context);
   return context;
 }
+
+test('web-app inventory access opens the configured sheet without an active workbook', () => {
+  let opened;
+  const sheet = { getRange: () => ({ getDisplayValue: () => 'Inventory ID' }) };
+  const api = server({
+    INTAKE_CONFIG: { spreadsheetId: 'TEST-SHEET-ID', environment: 'test' },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => { throw new Error('Web apps have no active sheet.'); },
+      openById: id => { opened = id; return { getSheetByName: () => sheet }; }
+    }
+  });
+  assert.equal(api.entrySheet_(), sheet);
+  assert.equal(opened, 'TEST-SHEET-ID');
+});
 
 for (const label of ['SERIAL', 'SERIAL NO.', 'SERIAL NUMBER', 'SERIAL #', 'S/N', 'S / N', 'SN', 'S.N.', 'SER. NO.']) {
   test(`extracts serial with ${label} label`, () => {

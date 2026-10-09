@@ -1,10 +1,14 @@
-/** Fussell phone intake. Bind this project to a Google Sheets copy of the inventory workbook. */
+/** Fussell phone intake. Configure the inventory sheet in Config.gs. */
 const ENTRY_SHEET = 'Inventory Entry';
 const HEADER_ROW = 4;
 const PHOTO_FOLDER_NAME = 'Fussell Inventory Photos';
 
 function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
+  const config = intakeConfig_();
+  const template = HtmlService.createTemplateFromFile('Index');
+  template.buildLabel = (config.environment === 'production' ? 'Live inventory' : 'Test inventory') +
+    ' · ' + (config.version || 'local');
+  return template.evaluate()
     .setTitle('Fussell Appliance Intake')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
@@ -29,17 +33,7 @@ function readTag(photo) {
     mimeType: 'application/vnd.google-apps.document'}, blob, {fields: 'id', ocrLanguage: 'en'});
   try {
     const raw = DocumentApp.openById(doc.id).getBody().getText();
-    const upper = raw.toUpperCase().replace(/[\u00a0]/g, ' ');
-    const model = tagNumber_(upper, 'model');
-    const serial = tagNumber_(upper, 'serial');
-    const type = /CLOTHES\s+DRYER|\bDRYER\b/.test(upper) ? 'Dryer' :
-      /\bWASHER\b/.test(upper) ? 'Washer' :
-      /\bREFRIGERATOR\b/.test(upper) ? 'Refrigerator' : '';
-    const brand = /SAMSUNG/.test(upper) ? 'Samsung' :
-      /FRIGIDAIRE/.test(upper) ? 'Frigidaire' :
-      /WHIRLPOOL/.test(upper) ? 'Whirlpool' :
-      /LG ELECTRONICS|\bLG\b/.test(upper) ? 'LG' : '';
-    return {type, brand, model, serial, raw};
+    return parseTagText_(raw);
   } finally {
     DriveApp.getFileById(doc.id).setTrashed(true);
   }
@@ -82,7 +76,11 @@ function submitIntake(data) {
 }
 
 function entrySheet_() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ENTRY_SHEET);
+  const config = intakeConfig_();
+  const workbook = config.spreadsheetId ? SpreadsheetApp.openById(config.spreadsheetId) :
+    SpreadsheetApp.getActiveSpreadsheet();
+  if (!workbook) throw new Error('Set the test spreadsheet ID in Config.gs before deploying.');
+  const sheet = workbook.getSheetByName(ENTRY_SHEET);
   if (!sheet || sheet.getRange(HEADER_ROW, 1).getDisplayValue() !== 'Inventory ID')
     throw new Error('Expected Inventory Entry with headers on row 4.');
   return sheet;
@@ -97,43 +95,20 @@ function findRow_(sheet, id) {
   const index = values.findIndex(v => v[0].trim().toUpperCase() === id);
   return index < 0 ? null : HEADER_ROW + 1 + index;
 }
-function tagNumber_(text, kind) {
-  const normalized = String(text || '').toUpperCase()
-    .replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ')
-    .replace(/[\u2010-\u2015]/g, '-');
-  const modelLabel = 'MODEL(?:[ \\t]*(?:NUMBER|NO\\.?|CODE))?|MOD\\.?';
-  const serialLabel = 'SERIAL(?:[ \\t]*(?:NUMBER|NO\\.?))?|S[ \\t]*/[ \\t]*N|S\\.?N\\.?|SER\\.?[ \\t]*(?:NUMBER|NO\\.?)';
-  const labels = new RegExp('\\b(?:' + (kind === 'model' ? modelLabel : serialLabel) +
-    ')(?=[\\s:#=.\\-]|$)[ \\t]*[:#=.\\-]*[ \\t]*', 'g');
-  const nextLabel = new RegExp('\\b(?:' + modelLabel + '|' + serialLabel +
-    '|TYPE|MFG|DATE|VOLTAGE|VOLTS|HZ|AMPS|MADE|PRODUCT)\\b');
-  let match;
-  while ((match = labels.exec(normalized))) {
-    // OCR sometimes places the number on the next line or inserts spaces in it.
-    const line = normalized.slice(labels.lastIndex).trimStart().split('\n')[0];
-    const valueText = line.split(nextLabel)[0].trim().replace(/[ \t]*([/\-])[ \t]*/g, '$1');
-    const valueMatch = valueText.match(/^[A-Z0-9][A-Z0-9/\-]*(?:[ \t]+[A-Z0-9][A-Z0-9/\-]*)*/);
-    if (!valueMatch) continue;
-    const parts = valueMatch[0].split(/[ \t]+/);
-    const numberParts = [];
-    for (const part of parts) {
-      if (/^(?:V|VAC|VOLT|W|WATTS|A|AMP|HZ|KW)$/.test(part)) break;
-      numberParts.push(part);
-    }
-    const value = numberParts.join('');
-    // Do not invent a number from a label or unrelated prose.
-    if (value.length >= 6 && /\d/.test(value)) return value;
-  }
-  return '';
-}
 function checkPhoto_(p) {
   if (!p || !/^image\/(jpeg|png)$/.test(p.mime) || !/^[A-Za-z0-9+/=]+$/.test(p.base64 || ''))
     throw new Error('Take a JPG or PNG photo.');
   if (p.base64.length > 8 * 1024 * 1024) throw new Error('Photo is too large. Retake at a smaller size.');
 }
 function photoFolder_() {
-  const iter = DriveApp.getFoldersByName(PHOTO_FOLDER_NAME);
-  return iter.hasNext() ? iter.next() : DriveApp.createFolder(PHOTO_FOLDER_NAME);
+  const config = intakeConfig_();
+  if (config.photoFolderId) return DriveApp.getFolderById(config.photoFolderId);
+  const name = PHOTO_FOLDER_NAME + (config.environment === 'production' ? '' : ' - Test');
+  const iter = DriveApp.getFoldersByName(name);
+  return iter.hasNext() ? iter.next() : DriveApp.createFolder(name);
+}
+function intakeConfig_() {
+  return typeof INTAKE_CONFIG === 'undefined' ? {environment: 'test'} : INTAKE_CONFIG;
 }
 function savePhoto_(folder, name, p) {
   return folder.createFile(Utilities.newBlob(Utilities.base64Decode(p.base64), p.mime, name + '.jpg'));

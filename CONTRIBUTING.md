@@ -4,23 +4,24 @@
 
 1. Start a branch from `main`, for example `fix/inventory-validation`.
 2. Edit the backend in `src/Code.gs` or the form in `src/Index.html`.
-3. Review `git diff` and run `git diff --check` before committing.
+3. Review `git diff`, run `git diff --check`, `npm run check`, and `npm test` before committing.
 4. Verify behavior in a bound Apps Script project using a separate test spreadsheet
    and non-production photos. Follow [the setup guide](docs/SETUP.md).
 5. Commit the fix with a message describing the behavior changed. Update the
    deployment after verification when ready to release.
 
-Keep Apps Script's file names `Code` and `Index` when copying from `src/`.
+Keep Apps Script's file names `Code`, `TagParser`, `Config`, and `Index` when copying from `src/`.
 With Node.js installed, run the regression tests using:
 
 ```powershell
-node --test tests/tag-intake.test.cjs
+npm ci --ignore-scripts
+npm test
 ```
 
-These tests cover label parsing, automatic form filling, OCR error handling,
-and inventory writes using simulated Google services and browser elements.
-They do not perform real OCR or verify a live Google deployment. There are no
-CI jobs or local application server configured.
+Tests cover parsing, form filling, OCR errors, simulated Google inventory writes,
+and Pages device storage. They run the real browser OCR engine against a
+generated tag image. They do not verify an actual iPhone or a live Google
+deployment. See [the pipeline guide](docs/PIPELINE.md) for CI and publishing.
 
 ## Manual verification
 
