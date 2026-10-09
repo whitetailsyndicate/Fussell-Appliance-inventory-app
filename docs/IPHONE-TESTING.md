@@ -21,6 +21,22 @@ Use **Share → Add to Home Screen** to create a test app shortcut. Export saved
 entries before clearing website data or switching devices. Keep an internet
 connection for loading the app and OCR resources; offline use is not promised.
 
+## Speak a serial number
+
+Tap **Speak serial number** below the serial box and allow microphone access.
+Speak each letter and digit separately, such as “A B zero zero one two dash C
+nine.” The result replaces the serial box with `AB0012-C9`. Check it against
+the tag and correct mistakes before saving. Tap **Stop listening** to finish
+early. Nothing is saved automatically.
+
+If browser speech recognition is unavailable or fails, the app focuses the
+serial box. Tap the serial box, then tap the microphone on the iPhone keyboard. If that
+microphone is missing, enable **Settings → General → Keyboard → Enable
+Dictation**. Keyboard dictation enters text directly, so check spacing and
+characters before saving. See [Apple's Dictation guide](https://support.apple.com/guide/iphone/dictate-text-iph2c0651d2/ios).
+Browser voice support varies and may require an internet connection; see
+[SpeechRecognition](https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition).
+
 ## After an update
 
 Refresh the same URL. The build label below the title identifies the published

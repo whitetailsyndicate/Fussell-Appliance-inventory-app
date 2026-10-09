@@ -22,7 +22,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}details{margin-to
 <div class="two"><div><label for="type">Appliance</label><select id="type"><option value="">Choose</option><option>Dryer</option><option>Washer</option><option>Refrigerator</option><option>Range</option><option>Dishwasher</option><option>Freezer</option><option>Other</option></select></div>
 <div><label for="brand">Brand</label><input id="brand"></div></div>
 <label for="model">Model number</label><input id="model" autocapitalize="characters">
-<label for="serial">Serial number</label><input id="serial" autocapitalize="characters">
+<label for="serial">Serial number</label><input id="serial" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-describedby="serialVoiceHint serialVoiceStatus">
+<button type="button" class="secondary" id="speakSerial">Speak serial number</button>
+<p class="hint" id="serialVoiceHint">Speak each letter and digit separately. Say “zero” for 0 and “dash” for a hyphen. Voice entry replaces this box; check it against the tag before saving.</p>
+<p class="hint" id="serialVoiceStatus" role="status" aria-live="polite"></p>
 <div class="two"><div><label for="location">Location</label><select id="location"><option value="">Choose</option><option>Alexandria</option><option>Ball</option><option>Joplin</option><option>Other</option></select></div>
 <div><label for="bin">Row / bin</label><input id="bin"></div></div>
 <div class="two"><div><label for="condition">Condition</label><select id="condition"><option value="">Choose</option><option>Used - Grade A</option><option>Used - Grade B</option><option>Used - Grade C</option><option>Scrap</option></select></div>
@@ -33,7 +36,44 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}details{margin-to
 const $=id=>document.getElementById(id); let existing=null;
 function message(t,ok=false){$('message').className=t?(ok?'alert success':'alert'):'';$('message').textContent=t}
 function error(e){message(e.message||String(e));busy(false)}
-function busy(b){for(const id of ['lookup','read','save','front','tag'])$(id).disabled=b}
+function busy(b){for(const id of ['lookup','read','save','front','tag','speakSerial'])$(id).disabled=b}
+let serialRecognition=null;
+function spokenSerial(text){
+  const digits={ZERO:'0',ONE:'1',TWO:'2',THREE:'3',FOUR:'4',FIVE:'5',SIX:'6',SEVEN:'7',EIGHT:'8',NINE:'9',DASH:'-',HYPHEN:'-'};
+  return text.toUpperCase().replace(/\b(ZERO|ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|DASH|HYPHEN)\b/g,word=>digits[word]).replace(/[^A-Z0-9-]/g,'');
+}
+function serialKeyboardHint(text){
+  $('serialVoiceStatus').textContent=text+' Tap the serial box, then tap the microphone on your iPhone keyboard to dictate, or type it. If it is missing, enable Dictation in Settings → General → Keyboard.';
+  $('serial').focus();
+}
+$('speakSerial').addEventListener('click',()=>{
+  if(serialRecognition){try{serialRecognition.stop()}catch(e){serialRecognition.onerror({error:'aborted'})}return}
+  const Speech=globalThis.SpeechRecognition||globalThis.webkitSpeechRecognition;
+  if(!Speech){serialKeyboardHint('Browser voice entry is unavailable.');return}
+  let recognition,heard=false;
+  function finish(){serialRecognition=null;$('serial').readOnly=false;busy(false);$('speakSerial').textContent='Speak serial number'}
+  try{
+    recognition=new Speech();recognition.lang='en-US';recognition.continuous=false;recognition.interimResults=false;
+    serialRecognition=recognition;busy(true);$('speakSerial').disabled=false;$('serial').readOnly=true;
+    $('speakSerial').textContent='Stop listening';$('serialVoiceStatus').textContent='Allow microphone access if asked. Speak each letter and digit separately.';
+    recognition.onstart=()=>{if(serialRecognition===recognition)$('serialVoiceStatus').textContent='Listening… Speak the serial number now.'};
+    recognition.onresult=event=>{
+      if(serialRecognition!==recognition)return;
+      const transcript=Array.from(event.results).filter(result=>result.isFinal).map(result=>result[0].transcript).join(' ');
+      const value=spokenSerial(transcript);if(!value)return;
+      heard=true;$('serial').value=value;$('serialVoiceStatus').textContent=`Heard: ${transcript}. Check ${value} against the tag and correct any characters before saving.`;
+    };
+    recognition.onerror=event=>{
+      if(serialRecognition!==recognition)return;finish();
+      serialKeyboardHint(event.error==='not-allowed'||event.error==='service-not-allowed'?'Microphone access was not allowed.':'Voice entry could not finish.');
+    };
+    recognition.onend=()=>{
+      if(serialRecognition!==recognition)return;finish();
+      if(!heard)$('serialVoiceStatus').textContent='No serial number was heard. Tap Speak serial number to retry, or use the keyboard microphone.';
+    };
+    recognition.start();
+  }catch(e){finish();serialKeyboardHint('Browser voice entry could not start.')}
+});
 function lookup(){busy(true);message('');google.script.run.withSuccessHandler(x=>{existing=x;$('existing').textContent=x.type?`${x.id} currently: ${x.brand} ${x.type} ${x.model}`:`${x.id} is available`;
   $('replaceArea').classList.toggle('hidden',!x.type);for(const k of ['location','bin','condition','status'])if(x[k])$(k).value=x[k];busy(false)}).withFailureHandler(error).getExisting($('id').value)}
 async function photo(id){const f=$(id).files[0];if(!f)throw Error('Take both photos.');const img=await createImageBitmap(f);let w=img.width,h=img.height,scale=Math.min(1,(id==='tag'?2400:1800)/Math.max(w,h));

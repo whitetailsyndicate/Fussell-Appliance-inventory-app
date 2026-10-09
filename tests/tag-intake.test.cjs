@@ -84,7 +84,7 @@ test('readTag returns extracted numbers and removes the temporary OCR document',
   assert.equal(trashed, true);
 });
 
-function browser(result, failure) {
+function browser(result, failure, speech = {}) {
   const elements = new Map();
   const encodings = [];
   const get = id => {
@@ -92,6 +92,7 @@ function browser(result, failure) {
       const classes = new Set();
       elements.set(id, {
         value: '', textContent: '', files: [photo], disabled: false,
+        focus() { this.focused = true; },
         classList: { add: x => classes.add(x), remove: x => classes.delete(x),
           contains: x => classes.has(x), toggle: () => {} },
         addEventListener: function (event, callback) { this[event] = callback; }
@@ -108,6 +109,7 @@ function browser(result, failure) {
     submitIntake(data) { this.saved = data; this.success({ id: data.id, row: 5 }); }
   };
   const context = vm.createContext({
+    ...speech,
     document: {
       getElementById: get,
       createElement: () => ({ getContext: () => ({ drawImage() {} }),
@@ -119,6 +121,78 @@ function browser(result, failure) {
   vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
   return { context, get, run, encodings };
 }
+
+// The browser supplies microphone events; the real form must fill, preserve,
+// and submit the serial correctly, including when voice services fail.
+function voiceBrowser(prefix = 'SpeechRecognition', startError) {
+  let recognition;
+  class Speech {
+    constructor() { recognition = this; }
+    start() { if (startError) throw startError; }
+    stop() { this.onend(); }
+  }
+  const ui = browser({}, null, { [prefix]: Speech });
+  assert.equal(typeof ui.get('speakSerial').click, 'function', 'serial voice control must be wired to the form');
+  ui.get('speakSerial').click();
+  return { ...ui, recognition };
+}
+
+for (const prefix of ['SpeechRecognition', 'webkitSpeechRecognition']) {
+  test(`voice entry fills and saves serial using ${prefix}`, async () => {
+    const ui = voiceBrowser(prefix);
+    assert.equal(ui.get('save').disabled, true);
+    ui.recognition.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'a b zero zero one two dash c nine.' }], { isFinal: true })] });
+    ui.recognition.onend();
+    assert.equal(ui.get('serial').value, 'AB0012-C9');
+    assert.equal(ui.get('serial').readOnly, false);
+    assert.match(ui.get('serialVoiceStatus').textContent, /check/i);
+    ui.get('id').value = 'FA-000003';
+    ui.context.lookup();
+    await ui.context.save();
+    assert.equal(ui.run.saved.serial, 'AB0012-C9');
+  });
+}
+
+test('unsupported voice entry focuses serial for iPhone keyboard dictation', () => {
+  const ui = browser({});
+  assert.equal(typeof ui.get('speakSerial').click, 'function');
+  ui.get('serial').value = 'EXISTING001';
+  ui.get('speakSerial').click();
+  assert.equal(ui.get('serial').focused, true);
+  assert.equal(ui.get('serial').value, 'EXISTING001');
+  assert.match(ui.get('serialVoiceStatus').textContent, /keyboard/i);
+  assert.match(ui.get('serialVoiceStatus').textContent, /microphone/i);
+});
+
+test('denied microphone preserves serial and permits manual correction', () => {
+  const ui = voiceBrowser();
+  ui.get('serial').value = 'EXISTING001';
+  ui.recognition.onerror({ error: 'not-allowed' });
+  ui.recognition.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'wrong123' }], { isFinal: true })] });
+  ui.recognition.onend();
+  assert.equal(ui.get('serial').value, 'EXISTING001');
+  assert.equal(ui.get('save').disabled, false);
+  assert.equal(ui.get('serial').readOnly, false);
+  assert.match(ui.get('serialVoiceStatus').textContent, /microphone/i);
+});
+
+test('stopping without speech preserves serial and restores form controls', () => {
+  const ui = voiceBrowser();
+  ui.get('serial').value = 'EXISTING001';
+  ui.get('speakSerial').click();
+  assert.equal(ui.get('serial').value, 'EXISTING001');
+  assert.equal(ui.get('tag').disabled, false);
+  assert.match(ui.get('serialVoiceStatus').textContent, /no.*heard/i);
+});
+
+test('voice startup failure restores form and offers keyboard microphone', () => {
+  const ui = voiceBrowser('SpeechRecognition', new Error('Unavailable'));
+  assert.equal(ui.get('save').disabled, false);
+  assert.equal(ui.get('serial').readOnly, false);
+  assert.equal(ui.get('serial').focused, true);
+  assert.match(ui.get('serialVoiceStatus').textContent, /keyboard/i);
+  assert.match(ui.get('serialVoiceStatus').textContent, /microphone/i);
+});
 
 test('taking a tag photo automatically fills model and serial boxes', async () => {
   const ui = browser({ model, serial, raw: `MODEL: ${model}\nS/N: ${serial}` });
