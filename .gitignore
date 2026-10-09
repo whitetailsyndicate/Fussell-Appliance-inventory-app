@@ -4,6 +4,11 @@
 !.env.example
 .clasprc.json
 .clasp.json
+.clasp-*.json
+.clasprc*.json
+.local/
+config.*.json
+!config.example.json
 credentials*.json
 token*.json
 
@@ -16,6 +21,7 @@ token*.json
 *.jpg
 *.jpeg
 *.png
+!tests/fixtures/*.png
 *.heic
 *.heif
 *.webp
@@ -27,6 +33,8 @@ backups/
 node_modules/
 dist/
 build/
+artifacts/
+*.zip
 coverage/
 *.log
 *.tmp

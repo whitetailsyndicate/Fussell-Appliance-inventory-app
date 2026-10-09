@@ -4,14 +4,24 @@
 
 1. Start a branch from `main`, for example `fix/inventory-validation`.
 2. Edit the backend in `src/Code.gs` or the form in `src/Index.html`.
-3. Review `git diff` and run `git diff --check` before committing.
+3. Review `git diff`, run `git diff --check`, `npm run check`, and `npm test` before committing.
 4. Verify behavior in a bound Apps Script project using a separate test spreadsheet
    and non-production photos. Follow [the setup guide](docs/SETUP.md).
 5. Commit the fix with a message describing the behavior changed. Update the
    deployment after verification when ready to release.
 
-Keep Apps Script's file names `Code` and `Index` when copying from `src/`.
-There are currently no automated tests, CI jobs, or local runtime in this repo.
+Keep Apps Script's file names `Code`, `TagParser`, `Config`, and `Index` when copying from `src/`.
+With Node.js installed, run the regression tests using:
+
+```powershell
+npm ci --ignore-scripts
+npm test
+```
+
+Tests cover parsing, form filling, OCR errors, simulated Google inventory writes,
+and Pages device storage. They run the real browser OCR engine against a
+generated tag image. They do not verify an actual iPhone or a live Google
+deployment. See [the pipeline guide](docs/PIPELINE.md) for CI and publishing.
 
 ## Manual verification
 
@@ -20,7 +30,8 @@ Choose checks relevant to the change:
 - Run `testSetup()` and confirm that it returns the expected inventory row.
 - Look up an unused ID, an occupied ID, an invalid ID, and an ID missing from
   the test sheet.
-- Read a clear tag photo and review its model and serial suggestions. Check
+- Take or choose a clear tag photo and confirm that both fields fill automatically.
+  Retry using **Read tag photo** and review the OCR text if a field is missing. Check
   the error or manual-entry behavior for a poorly recognized tag.
 - Save both photos and complete appliance details into an unused test row.
   Confirm the field values, photo links, and intake timestamp.

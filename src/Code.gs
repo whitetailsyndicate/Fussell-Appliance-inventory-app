@@ -1,10 +1,14 @@
-/** Fussell phone intake. Bind this project to a Google Sheets copy of the inventory workbook. */
+/** Fussell phone intake. Configure the inventory sheet in Config.gs. */
 const ENTRY_SHEET = 'Inventory Entry';
 const HEADER_ROW = 4;
 const PHOTO_FOLDER_NAME = 'Fussell Inventory Photos';
 
 function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
+  const config = intakeConfig_();
+  const template = HtmlService.createTemplateFromFile('Index');
+  template.buildLabel = (config.environment === 'production' ? 'Live inventory' : 'Test inventory') +
+    ' · ' + (config.version || 'local');
+  return template.evaluate()
     .setTitle('Fussell Appliance Intake')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
@@ -26,27 +30,18 @@ function readTag(photo) {
   const blob = Utilities.newBlob(Utilities.base64Decode(photo.base64), photo.mime,
     'tag-' + Date.now() + '.jpg');
   const doc = Drive.Files.create({name: 'Temporary Fussell tag OCR',
-    mimeType: 'application/vnd.google-apps.document'}, blob, {fields: 'id'});
+    mimeType: 'application/vnd.google-apps.document'}, blob, {fields: 'id', ocrLanguage: 'en'});
   try {
     const raw = DocumentApp.openById(doc.id).getBody().getText();
-    const upper = raw.toUpperCase().replace(/[\u00a0]/g, ' ');
-    const model = first_(upper, /MODEL\s*(?:NO\.?|NUMBER|#)?\s*[:.\-]?\s*([A-Z0-9][A-Z0-9\-/]{5,})/);
-    const serial = first_(upper, /SERIAL\s*(?:NO\.?|NUMBER|#)?\s*[:.\-]?\s*([A-Z0-9][A-Z0-9\-]{7,})/);
-    const type = /CLOTHES\s+DRYER|\bDRYER\b/.test(upper) ? 'Dryer' :
-      /\bWASHER\b/.test(upper) ? 'Washer' :
-      /\bREFRIGERATOR\b/.test(upper) ? 'Refrigerator' : '';
-    const brand = /SAMSUNG/.test(upper) ? 'Samsung' :
-      /FRIGIDAIRE/.test(upper) ? 'Frigidaire' :
-      /WHIRLPOOL/.test(upper) ? 'Whirlpool' :
-      /LG ELECTRONICS|\bLG\b/.test(upper) ? 'LG' : '';
-    return {type, brand, model, serial, raw};
+    return parseTagText_(raw);
   } finally {
     DriveApp.getFileById(doc.id).setTrashed(true);
   }
 }
 
 function submitIntake(data) {
-  const lock = LockService.getDocumentLock();
+  // Document locks are unavailable in web-app requests.
+  const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     const sheet = entrySheet_();
@@ -75,12 +70,17 @@ function submitIntake(data) {
     ]]);
     sheet.getRange(row, 19, 1, 3).setValues([[front.getUrl(), tag.getUrl(), now]]);
     sheet.getRange(row, 21).setNumberFormat('mm/dd/yyyy hh:mm');
+    SpreadsheetApp.flush();
     return {id, row, frontUrl: front.getUrl(), tagUrl: tag.getUrl()};
   } finally { lock.releaseLock(); }
 }
 
 function entrySheet_() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ENTRY_SHEET);
+  const config = intakeConfig_();
+  const workbook = config.spreadsheetId ? SpreadsheetApp.openById(config.spreadsheetId) :
+    SpreadsheetApp.getActiveSpreadsheet();
+  if (!workbook) throw new Error('Set the test spreadsheet ID in Config.gs before deploying.');
+  const sheet = workbook.getSheetByName(ENTRY_SHEET);
   if (!sheet || sheet.getRange(HEADER_ROW, 1).getDisplayValue() !== 'Inventory ID')
     throw new Error('Expected Inventory Entry with headers on row 4.');
   return sheet;
@@ -95,15 +95,20 @@ function findRow_(sheet, id) {
   const index = values.findIndex(v => v[0].trim().toUpperCase() === id);
   return index < 0 ? null : HEADER_ROW + 1 + index;
 }
-function first_(text, regex) { const m = text.match(regex); return m ? m[1].replace(/[^A-Z0-9\-/]/g, '') : ''; }
 function checkPhoto_(p) {
   if (!p || !/^image\/(jpeg|png)$/.test(p.mime) || !/^[A-Za-z0-9+/=]+$/.test(p.base64 || ''))
     throw new Error('Take a JPG or PNG photo.');
   if (p.base64.length > 8 * 1024 * 1024) throw new Error('Photo is too large. Retake at a smaller size.');
 }
 function photoFolder_() {
-  const iter = DriveApp.getFoldersByName(PHOTO_FOLDER_NAME);
-  return iter.hasNext() ? iter.next() : DriveApp.createFolder(PHOTO_FOLDER_NAME);
+  const config = intakeConfig_();
+  if (config.photoFolderId) return DriveApp.getFolderById(config.photoFolderId);
+  const name = PHOTO_FOLDER_NAME + (config.environment === 'production' ? '' : ' - Test');
+  const iter = DriveApp.getFoldersByName(name);
+  return iter.hasNext() ? iter.next() : DriveApp.createFolder(name);
+}
+function intakeConfig_() {
+  return typeof INTAKE_CONFIG === 'undefined' ? {environment: 'test'} : INTAKE_CONFIG;
 }
 function savePhoto_(folder, name, p) {
   return folder.createFile(Utilities.newBlob(Utilities.base64Decode(p.base64), p.mime, name + '.jpg'));

@@ -7,19 +7,28 @@ input[type=file]{padding:10px}button{margin-top:18px;background:#1552a3;color:wh
 button.secondary{background:#e8eef6;color:#143c70}button:disabled{opacity:.5}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .hint{color:#526174;font-size:14px;margin:5px 0}.alert{padding:12px;border-radius:8px;background:#fff2d2;margin:15px 0;white-space:pre-wrap}
 .success{background:#dff4e8}.hidden{display:none}img{max-width:100%;max-height:180px;border-radius:8px;margin-top:8px}
-</style></head><body><main><h1>Fussell appliance intake</h1><div class="card">
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}details{margin-top:12px}
+</style></head><body><main><h1>Fussell appliance intake</h1><p class="hint"><?= buildLabel ?></p><div class="card">
 <label for="id">Fussell inventory ID</label><input id="id" placeholder="FA-000003" autocomplete="off" required>
 <button class="secondary" id="lookup" onclick="lookup()">Find ID</button>
 <div id="existing" class="hint"></div>
 <label for="front">Full appliance photo</label><input id="front" type="file" accept="image/*" capture="environment" required>
 <label for="tag">Model and serial tag photo</label><input id="tag" type="file" accept="image/*" capture="environment" required>
+<p class="hint">Taking or choosing a tag photo reads it automatically. Use Read tag photo to retry.</p>
 <button class="secondary" id="read" onclick="readTag()">Read tag photo</button>
-<div id="fields" class="hidden">
+<details id="ocrDetails" class="hidden"><summary>Text read from tag photo</summary><pre id="ocrText"></pre></details>
+<div id="fields">
 <p class="hint">Check every character against the photo before saving.</p>
 <div class="two"><div><label for="type">Appliance</label><select id="type"><option value="">Choose</option><option>Dryer</option><option>Washer</option><option>Refrigerator</option><option>Range</option><option>Dishwasher</option><option>Freezer</option><option>Other</option></select></div>
 <div><label for="brand">Brand</label><input id="brand"></div></div>
-<label for="model">Model number</label><input id="model" autocapitalize="characters">
-<label for="serial">Serial number</label><input id="serial" autocapitalize="characters">
+<label for="model">Model number</label><input id="model" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-describedby="modelVoiceHint modelVoiceStatus">
+<button type="button" class="secondary" id="speakModel">Speak model number</button>
+<p class="hint" id="modelVoiceHint">Allow microphone access, then speak each letter and digit separately. Say “zero” for 0, “dash” for a hyphen, and “slash” for /. Voice entry replaces this box; check it against the tag before saving.</p>
+<p class="hint" id="modelVoiceStatus" role="status" aria-live="polite"></p>
+<label for="serial">Serial number</label><input id="serial" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-describedby="serialVoiceHint serialVoiceStatus">
+<button type="button" class="secondary" id="speakSerial">Speak serial number</button>
+<p class="hint" id="serialVoiceHint">Speak each letter and digit separately. Say “zero” for 0 and “dash” for a hyphen. Voice entry replaces this box; check it against the tag before saving.</p>
+<p class="hint" id="serialVoiceStatus" role="status" aria-live="polite"></p>
 <div class="two"><div><label for="location">Location</label><select id="location"><option value="">Choose</option><option>Alexandria</option><option>Ball</option><option>Joplin</option><option>Other</option></select></div>
 <div><label for="bin">Row / bin</label><input id="bin"></div></div>
 <div class="two"><div><label for="condition">Condition</label><select id="condition"><option value="">Choose</option><option>Used - Grade A</option><option>Used - Grade B</option><option>Used - Grade C</option><option>Scrap</option></select></div>
@@ -30,13 +39,58 @@ button.secondary{background:#e8eef6;color:#143c70}button:disabled{opacity:.5}.tw
 const $=id=>document.getElementById(id); let existing=null;
 function message(t,ok=false){$('message').className=t?(ok?'alert success':'alert'):'';$('message').textContent=t}
 function error(e){message(e.message||String(e));busy(false)}
-function busy(b){for(const id of ['lookup','read','save'])$(id).disabled=b}
+function busy(b){for(const id of ['lookup','read','save','front','tag','speakModel','speakSerial'])$(id).disabled=b}
+let numberRecognition=null;
+function spokenNumber(text,field){
+  const digits={ZERO:'0',ONE:'1',TWO:'2',THREE:'3',FOUR:'4',FIVE:'5',SIX:'6',SEVEN:'7',EIGHT:'8',NINE:'9',DASH:'-',HYPHEN:'-',SLASH:'/'};
+  return text.toUpperCase().replace(/\b(ZERO|ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|DASH|HYPHEN|SLASH)\b/g,word=>digits[word]).replace(field==='model'?/[^A-Z0-9\/-]/g:/[^A-Z0-9-]/g,'');
+}
+function numberKeyboardHint(field,text){
+  $(field+'VoiceStatus').textContent=text+` Tap the ${field} box, then tap the microphone on your iPhone keyboard to dictate, or type it. If it is missing, enable Dictation in Settings → General → Keyboard.`;
+  $(field).focus();
+}
+function speakNumber(field,button){
+  if(numberRecognition){try{numberRecognition.stop()}catch(e){numberRecognition.onerror({error:'aborted'})}return}
+  const Speech=globalThis.SpeechRecognition||globalThis.webkitSpeechRecognition;
+  if(!Speech){numberKeyboardHint(field,'Browser voice entry is unavailable.');return}
+  let recognition,heard=false;
+  function finish(){numberRecognition=null;$(field).readOnly=false;busy(false);$(button).textContent=`Speak ${field} number`}
+  try{
+    recognition=new Speech();recognition.lang='en-US';recognition.continuous=false;recognition.interimResults=false;
+    numberRecognition=recognition;busy(true);$(button).disabled=false;$(field).readOnly=true;
+    $(button).textContent='Stop listening';$(field+'VoiceStatus').textContent='Allow microphone access if asked. Speak each letter and digit separately.';
+    recognition.onstart=()=>{if(numberRecognition===recognition)$(field+'VoiceStatus').textContent=`Listening… Speak the ${field} number now.`};
+    recognition.onresult=event=>{
+      if(numberRecognition!==recognition)return;
+      const transcript=Array.from(event.results).filter(result=>result.isFinal).map(result=>result[0].transcript).join(' ');
+      const value=spokenNumber(transcript,field);if(!value)return;
+      heard=true;$(field).value=value;$(field+'VoiceStatus').textContent=`Heard: ${transcript}. Check ${value} against the tag and correct any characters before saving.`;
+    };
+    recognition.onerror=event=>{
+      if(numberRecognition!==recognition)return;finish();
+      numberKeyboardHint(field,event.error==='not-allowed'||event.error==='service-not-allowed'?'Microphone access was not allowed.':'Voice entry could not finish.');
+    };
+    recognition.onend=()=>{
+      if(numberRecognition!==recognition)return;finish();
+      if(!heard)$(field+'VoiceStatus').textContent=`No ${field} number was heard. Tap Speak ${field} number to retry, or use the keyboard microphone.`;
+    };
+    recognition.start();
+  }catch(e){finish();numberKeyboardHint(field,'Browser voice entry could not start.')}
+}
+for(const [field,button] of [['model','speakModel'],['serial','speakSerial']])$(button).addEventListener('click',()=>speakNumber(field,button));
 function lookup(){busy(true);message('');google.script.run.withSuccessHandler(x=>{existing=x;$('existing').textContent=x.type?`${x.id} currently: ${x.brand} ${x.type} ${x.model}`:`${x.id} is available`;
   $('replaceArea').classList.toggle('hidden',!x.type);for(const k of ['location','bin','condition','status'])if(x[k])$(k).value=x[k];busy(false)}).withFailureHandler(error).getExisting($('id').value)}
-async function photo(id){const f=$(id).files[0];if(!f)throw Error('Take both photos.');const img=await createImageBitmap(f);let w=img.width,h=img.height,scale=Math.min(1,1800/Math.max(w,h));
+async function photo(id){const f=$(id).files[0];if(!f)throw Error('Take both photos.');const img=await createImageBitmap(f);let w=img.width,h=img.height,scale=Math.min(1,(id==='tag'?2400:1800)/Math.max(w,h));
   const c=document.createElement('canvas');c.width=Math.round(w*scale);c.height=Math.round(h*scale);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-  const uri=c.toDataURL('image/jpeg',.82);return {mime:'image/jpeg',base64:uri.split(',')[1]}}
-async function readTag(){try{busy(true);message('Reading tag…');const p=await photo('tag');google.script.run.withSuccessHandler(x=>{for(const k of ['type','brand','model','serial'])if(x[k])$(k).value=x[k];$('fields').classList.remove('hidden');message(x.model&&x.serial?'Review the model and serial against the photo.':'Some characters could not be read. Enter them from the photo.');busy(false)}).withFailureHandler(error).readTag(p)}catch(e){error(e)}}
+  const uri=c.toDataURL('image/jpeg',id==='tag'?.95:.82);if(img.close)img.close();return {mime:'image/jpeg',base64:uri.split(',')[1]}}
+$('tag').addEventListener('change',()=>{if(!$('tag').files.length)return;for(const k of ['type','brand','model','serial'])$(k).value='';$('ocrText').textContent='';$('ocrDetails').classList.add('hidden');readTag()});
+async function readTag(){try{busy(true);message('Reading tag…');const p=await photo('tag');google.script.run.withSuccessHandler(x=>{
+  for(const k of ['type','brand','model','serial'])$(k).value=x[k]||'';
+  $('ocrText').textContent=x.raw||'No readable text was found. Retake a close, well-lit photo or enter the numbers manually.';
+  $('ocrDetails').classList.remove('hidden');
+  const missing=['model','serial'].filter(k=>!x[k]);
+  message(missing.length?`Could not identify ${missing.join(' and ')}. Check the text read from the photo, retake the photo, or enter the missing number manually.`:'Model and serial filled in. Check every character against the photo, then tap Save to inventory.');busy(false)
+  }).withFailureHandler(e=>{message((e.message||String(e))+' You can enter the model and serial manually, then save.');busy(false)}).readTag(p)}catch(e){error(e)}}
 async function save(){try{busy(true);message('Saving photos and inventory…');if(!existing||existing.id!==$('id').value.trim().toUpperCase())throw Error('Tap Find ID first.');
   const data={id:$('id').value,front:await photo('front'),tag:await photo('tag'),confirmReplace:$('confirmReplace').checked};
   for(const k of ['type','brand','model','serial','location','bin','condition','status'])data[k]=$(k).value;
