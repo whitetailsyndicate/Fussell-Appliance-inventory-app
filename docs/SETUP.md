@@ -10,7 +10,16 @@ The original `.xlsm` file contains Excel macros. Keep that file as the backup. T
 4. Run `testSetup` once in the editor, then grant the requested Sheets, Drive, and Docs permissions. It should return the current row for `FA-000003`. Keep access restricted to the staff accounts that need intake.
 5. Choose **Deploy → New deployment → Web app**. Set it to execute as the owner and restrict who can access it to your staff. Copy the web app URL. On each iPhone, open the URL in Safari and use **Share → Add to Home Screen**.
 
-Staff enter or scan an FA ID, take an appliance photo and a close tag photo, tap **Read tag photo**, check the suggested fields against the photo, choose location and condition, and save. A saved row stores photo links in new columns S and T and the intake time in U. The existing margin and KORONA formulas are left alone.
+Staff enter an FA ID, tap **Find ID**, and take an appliance photo and a close tag photo. Choosing the tag photo automatically reads it and fills the model and serial boxes when recognized. Staff check the suggested fields against the photo, choose location and condition, and tap **Save to inventory**. Use **Read tag photo** to retry; expand **Text read from tag photo** if a field is missing. Manual entry remains available if OCR fails. A saved row stores photo links in new columns S and T and the intake time in U. The existing margin and KORONA formulas are left alone.
+
+## Update an existing deployment
+
+1. Replace the contents of the Apps Script `Code` and `Index` files with the updated files in `src/` and save the project.
+2. Choose **Deploy → Manage deployments**, select the existing web app, and click the edit pencil.
+3. Choose **New version** and click **Deploy**. Updating the existing deployment keeps the same web app URL.
+4. Reload the app on the iPhone. Take a tag photo, confirm both numbers fill in, review them, then save to a test inventory row.
+
+Pushing to GitHub does not update the live Apps Script deployment automatically.
 
 `FA-000003` currently says Washer in the original workbook. The photos show a Samsung dryer, model `DV56H9100EG/A2`, serial `0BH95AEG900840J`. When entering it, staff must explicitly confirm replacement of the existing appliance details. The form never silently overwrites a populated ID.
 

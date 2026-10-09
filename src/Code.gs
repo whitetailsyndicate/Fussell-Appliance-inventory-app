@@ -26,12 +26,12 @@ function readTag(photo) {
   const blob = Utilities.newBlob(Utilities.base64Decode(photo.base64), photo.mime,
     'tag-' + Date.now() + '.jpg');
   const doc = Drive.Files.create({name: 'Temporary Fussell tag OCR',
-    mimeType: 'application/vnd.google-apps.document'}, blob, {fields: 'id'});
+    mimeType: 'application/vnd.google-apps.document'}, blob, {fields: 'id', ocrLanguage: 'en'});
   try {
     const raw = DocumentApp.openById(doc.id).getBody().getText();
     const upper = raw.toUpperCase().replace(/[\u00a0]/g, ' ');
-    const model = first_(upper, /MODEL\s*(?:NO\.?|NUMBER|#)?\s*[:.\-]?\s*([A-Z0-9][A-Z0-9\-/]{5,})/);
-    const serial = first_(upper, /SERIAL\s*(?:NO\.?|NUMBER|#)?\s*[:.\-]?\s*([A-Z0-9][A-Z0-9\-]{7,})/);
+    const model = tagNumber_(upper, 'model');
+    const serial = tagNumber_(upper, 'serial');
     const type = /CLOTHES\s+DRYER|\bDRYER\b/.test(upper) ? 'Dryer' :
       /\bWASHER\b/.test(upper) ? 'Washer' :
       /\bREFRIGERATOR\b/.test(upper) ? 'Refrigerator' : '';
@@ -46,7 +46,8 @@ function readTag(photo) {
 }
 
 function submitIntake(data) {
-  const lock = LockService.getDocumentLock();
+  // Document locks are unavailable in web-app requests.
+  const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     const sheet = entrySheet_();
@@ -75,6 +76,7 @@ function submitIntake(data) {
     ]]);
     sheet.getRange(row, 19, 1, 3).setValues([[front.getUrl(), tag.getUrl(), now]]);
     sheet.getRange(row, 21).setNumberFormat('mm/dd/yyyy hh:mm');
+    SpreadsheetApp.flush();
     return {id, row, frontUrl: front.getUrl(), tagUrl: tag.getUrl()};
   } finally { lock.releaseLock(); }
 }
@@ -95,7 +97,35 @@ function findRow_(sheet, id) {
   const index = values.findIndex(v => v[0].trim().toUpperCase() === id);
   return index < 0 ? null : HEADER_ROW + 1 + index;
 }
-function first_(text, regex) { const m = text.match(regex); return m ? m[1].replace(/[^A-Z0-9\-/]/g, '') : ''; }
+function tagNumber_(text, kind) {
+  const normalized = String(text || '').toUpperCase()
+    .replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ')
+    .replace(/[\u2010-\u2015]/g, '-');
+  const modelLabel = 'MODEL(?:[ \\t]*(?:NUMBER|NO\\.?|CODE))?|MOD\\.?';
+  const serialLabel = 'SERIAL(?:[ \\t]*(?:NUMBER|NO\\.?))?|S[ \\t]*/[ \\t]*N|S\\.?N\\.?|SER\\.?[ \\t]*(?:NUMBER|NO\\.?)';
+  const labels = new RegExp('\\b(?:' + (kind === 'model' ? modelLabel : serialLabel) +
+    ')(?=[\\s:#=.\\-]|$)[ \\t]*[:#=.\\-]*[ \\t]*', 'g');
+  const nextLabel = new RegExp('\\b(?:' + modelLabel + '|' + serialLabel +
+    '|TYPE|MFG|DATE|VOLTAGE|VOLTS|HZ|AMPS|MADE|PRODUCT)\\b');
+  let match;
+  while ((match = labels.exec(normalized))) {
+    // OCR sometimes places the number on the next line or inserts spaces in it.
+    const line = normalized.slice(labels.lastIndex).trimStart().split('\n')[0];
+    const valueText = line.split(nextLabel)[0].trim().replace(/[ \t]*([/\-])[ \t]*/g, '$1');
+    const valueMatch = valueText.match(/^[A-Z0-9][A-Z0-9/\-]*(?:[ \t]+[A-Z0-9][A-Z0-9/\-]*)*/);
+    if (!valueMatch) continue;
+    const parts = valueMatch[0].split(/[ \t]+/);
+    const numberParts = [];
+    for (const part of parts) {
+      if (/^(?:V|VAC|VOLT|W|WATTS|A|AMP|HZ|KW)$/.test(part)) break;
+      numberParts.push(part);
+    }
+    const value = numberParts.join('');
+    // Do not invent a number from a label or unrelated prose.
+    if (value.length >= 6 && /\d/.test(value)) return value;
+  }
+  return '';
+}
 function checkPhoto_(p) {
   if (!p || !/^image\/(jpeg|png)$/.test(p.mime) || !/^[A-Za-z0-9+/=]+$/.test(p.base64 || ''))
     throw new Error('Take a JPG or PNG photo.');

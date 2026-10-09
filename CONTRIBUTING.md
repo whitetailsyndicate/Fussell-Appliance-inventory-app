@@ -11,7 +11,16 @@
    deployment after verification when ready to release.
 
 Keep Apps Script's file names `Code` and `Index` when copying from `src/`.
-There are currently no automated tests, CI jobs, or local runtime in this repo.
+With Node.js installed, run the regression tests using:
+
+```powershell
+node --test tests/tag-intake.test.cjs
+```
+
+These tests cover label parsing, automatic form filling, OCR error handling,
+and inventory writes using simulated Google services and browser elements.
+They do not perform real OCR or verify a live Google deployment. There are no
+CI jobs or local application server configured.
 
 ## Manual verification
 
@@ -20,7 +29,8 @@ Choose checks relevant to the change:
 - Run `testSetup()` and confirm that it returns the expected inventory row.
 - Look up an unused ID, an occupied ID, an invalid ID, and an ID missing from
   the test sheet.
-- Read a clear tag photo and review its model and serial suggestions. Check
+- Take or choose a clear tag photo and confirm that both fields fill automatically.
+  Retry using **Read tag photo** and review the OCR text if a field is missing. Check
   the error or manual-entry behavior for a poorly recognized tag.
 - Save both photos and complete appliance details into an unused test row.
   Confirm the field values, photo links, and intake timestamp.

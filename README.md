@@ -13,6 +13,8 @@ src/
   Index.html       Mobile form and browser-side photo processing
 docs/
   SETUP.md         Google Apps Script deployment and staff setup
+tests/
+  tag-intake.test.cjs  OCR parsing, form autofill, and inventory save regressions
 CONTRIBUTING.md    Development workflow and manual verification
 ```
 
@@ -35,9 +37,12 @@ repository.
   `getExisting()`, `readTag()`, and `submitIntake()`.
 - Inventory IDs must match `FA-` followed by six digits and already exist in
   column A of the `Inventory Entry` sheet. The header row is row 4.
-- Photos are resized in the browser to a maximum dimension of 1,800 pixels and
-  encoded as JPEG. Tag OCR creates a temporary Google Doc and trashes it after
-  reading the text.
+- Choosing a tag photo automatically reads it and fills the model and serial
+  fields when recognized. Staff review the suggestions before saving. The
+  original OCR text is available under "Text read from tag photo."
+- Photos are encoded as JPEG and resized in the browser to a maximum dimension
+  of 1,800 pixels for appliance photos and 2,400 pixels for tag photos. Tag OCR
+  creates a temporary Google Doc and trashes it after reading the text.
 - Intake saves photos into the `Fussell Inventory Photos` Drive folder and
   writes staff-entry fields to columns C-J. It sets column B's date only when
   empty, and stores photo links and the intake time in columns S-U.
