@@ -1,0 +1,7 @@
+# Normalize text in Git and use LF in future checkouts.
+* text=auto eol=lf
+*.gs text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.ps1 text eol=crlf

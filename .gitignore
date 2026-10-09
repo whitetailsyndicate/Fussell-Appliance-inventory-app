@@ -1,0 +1,44 @@
+# Local credentials and deployment bindings
+.env
+.env.*
+!.env.example
+.clasprc.json
+.clasp.json
+credentials*.json
+token*.json
+
+# Inventory workbooks, exports, and photos
+*.xls
+*.xlsx
+*.xlsm
+*.csv
+*.tsv
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.heif
+*.webp
+data/
+photos/
+backups/
+
+# Local dependencies, output, and temporary files
+node_modules/
+dist/
+build/
+coverage/
+*.log
+*.tmp
+*.bak
+~$*
+
+# Editor, operating-system, and local agent state
+.vscode/
+.idea/
+.agents/
+.codex/
+.aws/
+.DS_Store
+Thumbs.db
+Desktop.ini

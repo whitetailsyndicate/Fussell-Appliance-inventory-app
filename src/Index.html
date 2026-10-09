@@ -1,0 +1,44 @@
+<!doctype html><html><head><base target="_top"><style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6f9;color:#172335;font:16px system-ui,sans-serif}
+main{max-width:560px;margin:auto;padding:20px}h1{font-size:24px;margin:4px 0 18px}
+.card{background:white;border:1px solid #d9e0e8;border-radius:14px;padding:18px;box-shadow:0 2px 8px #1523380b}
+label{display:block;font-weight:650;margin:14px 0 6px}input,select,button{font:inherit;width:100%;padding:12px;border:1px solid #aebac9;border-radius:9px;background:#fff}
+input[type=file]{padding:10px}button{margin-top:18px;background:#1552a3;color:white;border:0;font-weight:700;min-height:48px}
+button.secondary{background:#e8eef6;color:#143c70}button:disabled{opacity:.5}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hint{color:#526174;font-size:14px;margin:5px 0}.alert{padding:12px;border-radius:8px;background:#fff2d2;margin:15px 0;white-space:pre-wrap}
+.success{background:#dff4e8}.hidden{display:none}img{max-width:100%;max-height:180px;border-radius:8px;margin-top:8px}
+</style></head><body><main><h1>Fussell appliance intake</h1><div class="card">
+<label for="id">Fussell inventory ID</label><input id="id" placeholder="FA-000003" autocomplete="off" required>
+<button class="secondary" id="lookup" onclick="lookup()">Find ID</button>
+<div id="existing" class="hint"></div>
+<label for="front">Full appliance photo</label><input id="front" type="file" accept="image/*" capture="environment" required>
+<label for="tag">Model and serial tag photo</label><input id="tag" type="file" accept="image/*" capture="environment" required>
+<button class="secondary" id="read" onclick="readTag()">Read tag photo</button>
+<div id="fields" class="hidden">
+<p class="hint">Check every character against the photo before saving.</p>
+<div class="two"><div><label for="type">Appliance</label><select id="type"><option value="">Choose</option><option>Dryer</option><option>Washer</option><option>Refrigerator</option><option>Range</option><option>Dishwasher</option><option>Freezer</option><option>Other</option></select></div>
+<div><label for="brand">Brand</label><input id="brand"></div></div>
+<label for="model">Model number</label><input id="model" autocapitalize="characters">
+<label for="serial">Serial number</label><input id="serial" autocapitalize="characters">
+<div class="two"><div><label for="location">Location</label><select id="location"><option value="">Choose</option><option>Alexandria</option><option>Ball</option><option>Joplin</option><option>Other</option></select></div>
+<div><label for="bin">Row / bin</label><input id="bin"></div></div>
+<div class="two"><div><label for="condition">Condition</label><select id="condition"><option value="">Choose</option><option>Used - Grade A</option><option>Used - Grade B</option><option>Used - Grade C</option><option>Scrap</option></select></div>
+<div><label for="status">Test status</label><select id="status"><option value="">Choose</option><option>Not Tested</option><option>Passed</option><option>Failed</option><option>Needs Repair</option></select></div></div>
+<div id="replaceArea" class="hidden"><label><input type="checkbox" id="confirmReplace" style="width:auto"> Replace existing appliance details for this ID</label></div>
+<button id="save" onclick="save()">Save to inventory</button></div>
+<div id="message" role="status"></div></div></main><script>
+const $=id=>document.getElementById(id); let existing=null;
+function message(t,ok=false){$('message').className=t?(ok?'alert success':'alert'):'';$('message').textContent=t}
+function error(e){message(e.message||String(e));busy(false)}
+function busy(b){for(const id of ['lookup','read','save'])$(id).disabled=b}
+function lookup(){busy(true);message('');google.script.run.withSuccessHandler(x=>{existing=x;$('existing').textContent=x.type?`${x.id} currently: ${x.brand} ${x.type} ${x.model}`:`${x.id} is available`;
+  $('replaceArea').classList.toggle('hidden',!x.type);for(const k of ['location','bin','condition','status'])if(x[k])$(k).value=x[k];busy(false)}).withFailureHandler(error).getExisting($('id').value)}
+async function photo(id){const f=$(id).files[0];if(!f)throw Error('Take both photos.');const img=await createImageBitmap(f);let w=img.width,h=img.height,scale=Math.min(1,1800/Math.max(w,h));
+  const c=document.createElement('canvas');c.width=Math.round(w*scale);c.height=Math.round(h*scale);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  const uri=c.toDataURL('image/jpeg',.82);return {mime:'image/jpeg',base64:uri.split(',')[1]}}
+async function readTag(){try{busy(true);message('Reading tag…');const p=await photo('tag');google.script.run.withSuccessHandler(x=>{for(const k of ['type','brand','model','serial'])if(x[k])$(k).value=x[k];$('fields').classList.remove('hidden');message(x.model&&x.serial?'Review the model and serial against the photo.':'Some characters could not be read. Enter them from the photo.');busy(false)}).withFailureHandler(error).readTag(p)}catch(e){error(e)}}
+async function save(){try{busy(true);message('Saving photos and inventory…');if(!existing||existing.id!==$('id').value.trim().toUpperCase())throw Error('Tap Find ID first.');
+  const data={id:$('id').value,front:await photo('front'),tag:await photo('tag'),confirmReplace:$('confirmReplace').checked};
+  for(const k of ['type','brand','model','serial','location','bin','condition','status'])data[k]=$(k).value;
+  google.script.run.withSuccessHandler(x=>{message(`${x.id} saved in inventory row ${x.row}.`,true);busy(false)}).withFailureHandler(error).submitIntake(data)}catch(e){error(e)}}
+</script></body></html>
