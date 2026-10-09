@@ -124,7 +124,7 @@ function browser(result, failure, speech = {}) {
 
 // The browser supplies microphone events; the real form must fill, preserve,
 // and submit the serial correctly, including when voice services fail.
-function voiceBrowser(prefix = 'SpeechRecognition', startError) {
+function voiceBrowser(prefix = 'SpeechRecognition', startError, field = 'serial') {
   let recognition;
   class Speech {
     constructor() { recognition = this; }
@@ -132,10 +132,56 @@ function voiceBrowser(prefix = 'SpeechRecognition', startError) {
     stop() { this.onend(); }
   }
   const ui = browser({}, null, { [prefix]: Speech });
-  assert.equal(typeof ui.get('speakSerial').click, 'function', 'serial voice control must be wired to the form');
-  ui.get('speakSerial').click();
+  const button = field === 'model' ? 'speakModel' : 'speakSerial';
+  assert.equal(typeof ui.get(button).click, 'function', `${field} voice control must be wired to the form`);
+  ui.get(button).click();
   return { ...ui, recognition };
 }
+
+for (const prefix of ['SpeechRecognition', 'webkitSpeechRecognition']) {
+  test(`model voice entry preserves slash suffix and saves to model using ${prefix}`, async () => {
+    const ui = voiceBrowser(prefix, undefined, 'model');
+    ui.get('serial').value = 'SERIAL001';
+    assert.equal(ui.get('speakSerial').disabled, true);
+    ui.recognition.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'D V five six H nine one zero zero E G slash A two' }], { isFinal: true })] });
+    ui.recognition.onend();
+    assert.equal(ui.get('model').value, 'DV56H9100EG/A2');
+    assert.equal(ui.get('serial').value, 'SERIAL001');
+    assert.equal(ui.get('model').readOnly, false);
+    assert.equal(ui.get('speakSerial').disabled, false);
+    assert.match(ui.get('modelVoiceStatus').textContent, /check/i);
+    ui.get('id').value = 'FA-000003';
+    ui.context.lookup();
+    await ui.context.save();
+    assert.equal(ui.run.saved.model, 'DV56H9100EG/A2');
+    assert.equal(ui.run.saved.serial, 'SERIAL001');
+  });
+}
+
+test('unsupported model voice entry focuses the model box without changing serial', () => {
+  const ui = browser({});
+  assert.equal(typeof ui.get('speakModel').click, 'function');
+  ui.get('model').value = 'OLD-MODEL';
+  ui.get('serial').value = 'SERIAL001';
+  ui.get('speakModel').click();
+  assert.equal(ui.get('model').focused, true);
+  assert.equal(ui.get('model').value, 'OLD-MODEL');
+  assert.equal(ui.get('serial').value, 'SERIAL001');
+  assert.match(ui.get('modelVoiceStatus').textContent, /model box/i);
+  assert.match(ui.get('modelVoiceStatus').textContent, /microphone/i);
+});
+
+test('denied model microphone preserves existing model and restores both voice buttons', () => {
+  const ui = voiceBrowser('SpeechRecognition', undefined, 'model');
+  ui.get('model').value = 'OLD-MODEL';
+  ui.recognition.onerror({ error: 'not-allowed' });
+  ui.recognition.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'WRONG123' }], { isFinal: true })] });
+  ui.recognition.onend();
+  assert.equal(ui.get('model').value, 'OLD-MODEL');
+  assert.equal(ui.get('model').readOnly, false);
+  for (const id of ['save', 'speakModel', 'speakSerial']) assert.equal(ui.get(id).disabled, false);
+  assert.match(ui.get('modelVoiceStatus').textContent, /microphone/i);
+});
 
 for (const prefix of ['SpeechRecognition', 'webkitSpeechRecognition']) {
   test(`voice entry fills and saves serial using ${prefix}`, async () => {
